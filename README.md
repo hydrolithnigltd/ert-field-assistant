@@ -2,7 +2,8 @@
 
 Single-file web app for logging electrical resistivity (ERT) and induced polarization (IP) field data, with live pseudosections and a built-in 2D inversion.
 
-- `index.html` — minified, self-contained app (open it in a browser, or serve it over HTTPS for GPS)
+- `index.html` — minified app (the installable web app)
+- `manifest.webmanifest`, `sw.js`, `icons/` — make it installable and usable offline
 - `src/ert_field_assistant.html` — readable source of the same app
 
 ## Features
@@ -18,3 +19,10 @@ Single-file web app for logging electrical resistivity (ERT) and induced polariz
 - The satellite basemap needs an internet connection (Leaflet and Esri tiles).
 
 © 2026 Asije Labs
+
+## Install on your device
+Open the app from its web link (GitHub Pages: Settings → Pages → deploy from `main` / root).
+- **Chrome / Edge (computer or Android):** click the **⬇ Install App** button in the top bar (or the install icon in the address bar).
+- **iPhone / iPad (Safari):** tap Share → **Add to Home Screen**.
+
+Once installed it opens like a normal app and keeps working without a connection (the satellite map still needs internet).

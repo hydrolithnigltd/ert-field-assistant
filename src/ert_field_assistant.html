@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>ERT Field Assistant — Live Survey Console</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14170f">
+<meta name="application-name" content="ERT Field Assistant">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ERT Assistant">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -269,6 +278,24 @@
   .inv-actions{ display:flex; justify-content:center; margin-top:4px; }
   .inv-actions .btn{ width:auto; }
 
+
+  /* ---------- install button ---------- */
+  .install-btn{
+    display:none; align-items:center; gap:6px;
+    font-family: var(--mono); font-size:10.5px; letter-spacing:0.04em;
+    padding:5px 11px; border-radius:14px; cursor:pointer;
+    background: var(--amber); color:#1a1500; border:1px solid var(--amber); font-weight:600;
+  }
+  .install-btn.show{ display:inline-flex; }
+  .install-btn:hover{ filter:brightness(1.08); }
+  .install-hint{
+    display:none; position:fixed; left:12px; right:12px; bottom:12px; z-index:3000;
+    background: var(--panel-raised); color: var(--text); border:1px solid var(--amber); border-radius:8px;
+    padding:12px 14px; font-family: var(--mono); font-size:11.5px; line-height:1.55; box-shadow:0 6px 24px rgba(0,0,0,0.35);
+  }
+  .install-hint.show{ display:block; }
+  .install-hint button{ float:right; margin-left:10px; background:none; border:none; color: var(--text-dim); font-size:15px; cursor:pointer; }
+
   /* ---------- GPS readout ---------- */
   .gps-readout{
     display:grid;
@@ -488,12 +515,15 @@
     <div class="sub">Live station capture</div>
     <div class="topbar-right">
       <div class="topbar-version" title="ERT Field Assistant">v1.0.0 &nbsp;·&nbsp; &copy; 2026 Asije Labs</div>
+      <button class="install-btn" id="btnInstall" type="button" title="Install ERT Field Assistant on this device">⬇ Install App</button>
       <div class="theme-toggle" id="themeToggle">
         <span id="themeLabel">Console Mode</span>
         <span class="icon" id="themeIcon">◐</span>
       </div>
     </div>
   </div>
+
+  <div class="install-hint" id="installHint"><button type="button" id="installHintClose" aria-label="Close">✕</button><span id="installHintText"></span></div>
 
   <div class="layout">
     <div class="sidebar">
@@ -3162,6 +3192,36 @@ const ERTInv = (function(){
       invState.result = null; el("invResult").style.display = "none";
       setInvStatus("Readings changed — run the inversion again.", "err"); el("btnRunInv").textContent = "▶ Run Inversion";
     } else if (invState.result){ drawInversion(); }
+  }
+
+
+  // ================= install as an app (PWA) =================
+  // Chrome/Edge/Android: the browser fires "beforeinstallprompt"; we keep it and show our own button.
+  // iPhone/iPad Safari has no install prompt, so the button explains Share → Add to Home Screen.
+  let deferredInstall = null;
+  const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  function showInstallHint(msg){ el("installHintText").textContent = msg; el("installHint").classList.add("show"); }
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault(); deferredInstall = e;
+    if (!isStandalone()) el("btnInstall").classList.add("show");
+  });
+  window.addEventListener("appinstalled", () => { deferredInstall = null; el("btnInstall").classList.remove("show"); el("installHint").classList.remove("show"); });
+  if (isIOS && !isStandalone() && location.protocol.indexOf("http") === 0) el("btnInstall").classList.add("show");
+  el("btnInstall").addEventListener("click", async () => {
+    if (deferredInstall){
+      deferredInstall.prompt();
+      try { await deferredInstall.userChoice; } catch (e) {}
+      deferredInstall = null; el("btnInstall").classList.remove("show");
+    } else if (isIOS){
+      showInstallHint("To install: tap the Share button in Safari, then “Add to Home Screen”.");
+    } else {
+      showInstallHint("Use your browser menu (⋮ or ⋯) and choose “Install app” or “Add to Home screen”.");
+    }
+  });
+  el("installHintClose").addEventListener("click", () => el("installHint").classList.remove("show"));
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0){
+    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
   }
 
   // ---------------- init ----------------

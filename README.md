@@ -7,10 +7,10 @@ Single-file web app for logging electrical resistivity (ERT) and induced polariz
 - `src/ert_field_assistant.html` — readable source of the same app
 
 ## Features
-- Wenner, Schlumberger, Dipole-Dipole, Pole-Dipole and Pole-Pole arrays
+- Wenner, Schlumberger, Wenner-Schlumberger, Dipole-Dipole, Pole-Dipole and Pole-Pole arrays
 - GPS, manual, base-station + azimuth, and two-point-line positioning
 - Resistivity-only or Resistivity + IP logging, QC flags, editable station log
-- Pseudosection and 2D inversion (Wenner, Schlumberger, Dipole-Dipole)
+- Pseudosection and 2D inversion (Wenner, Schlumberger, Wenner-Schlumberger, Dipole-Dipole)
 - Exports: web map, KML, CSV, RES2DINV, Oasis Montaj
 - Session save/resume and automatic backups
 

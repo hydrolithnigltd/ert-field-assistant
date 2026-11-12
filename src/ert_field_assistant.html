@@ -539,6 +539,7 @@
         <select id="arrayType">
           <option value="Wenner">Wenner</option>
           <option value="Schlumberger">Schlumberger</option>
+          <option value="Wenner-Schlumberger">Wenner-Schlumberger</option>
           <option value="Dipole-Dipole">Dipole-Dipole</option>
           <option value="Pole-Dipole">Pole-Dipole</option>
           <option value="Pole-Pole">Pole-Pole</option>
@@ -1159,7 +1160,9 @@ const ERTInv = (function(){
       best = { m: Float64Array.from(m), d: Array.from(d), J, chi2: c2 };
       progress(it, maxIter, c2, rmsPct(d));
       if (c2 <= 1.0) break;
-      lamRel = Math.max(lamRel*0.75, 1e-5);
+      // stop when the misfit has stalled (inconsistent data cannot be fitted by making the model rougher)
+      if (hist.length > 3 && hist[hist.length-1].chi2 > 0.9*hist[hist.length-3].chi2) break;
+      lamRel = Math.max(lamRel*0.75, 0.003);
     }
     m = best.m; d = best.d; J = best.J;
     const rho = Array.from(m, v => Math.exp(v));
@@ -1264,6 +1267,7 @@ const ERTInv = (function(){
   // infinity for the pole configurations:
   //   Wenner        a = electrode spacing                    K = 2πa
   //   Schlumberger  a = MN, n = (AB/2)/a                      K = πa(n² - 1/4)
+  //   Wenner-Schlumberger  a = MN, n = C1-P1 / a (n = 1 is Wenner)   K = πa·n(n+1)
   //   Dipole-Dipole a = dipole length, n = separation factor  K = πa·n(n+1)(n+2)
   //   Pole-Dipole   a = dipole length, n = separation factor  K = 2πa·n(n+1)
   //   Pole-Pole     a = AM spacing                            K = 2πa
@@ -1272,6 +1276,7 @@ const ERTInv = (function(){
     switch (arrayType){
       case "Wenner":        return 2 * Math.PI * a;
       case "Schlumberger":  return Math.PI * a * (nn * nn - 0.25);
+      case "Wenner-Schlumberger": return Math.PI * a * nn * (nn + 1);
       case "Dipole-Dipole": return Math.PI * nn * (nn + 1) * (nn + 2) * a;
       case "Pole-Dipole":   return 2 * Math.PI * a * nn * (nn + 1);
       case "Pole-Pole":     return 2 * Math.PI * a;
@@ -1282,10 +1287,10 @@ const ERTInv = (function(){
     return geometricFactor(arrayType, a, n) * R;
   }
   function arrayNeedsMultiplier(arrayType){
-    return arrayType === "Dipole-Dipole" || arrayType === "Schlumberger" || arrayType === "Pole-Dipole";
+    return arrayType === "Dipole-Dipole" || arrayType === "Schlumberger" || arrayType === "Wenner-Schlumberger" || arrayType === "Pole-Dipole";
   }
   function arraySupportsSimulation(arrayType){
-    return arrayType === "Wenner" || arrayType === "Dipole-Dipole";
+    return arrayType === "Wenner" || arrayType === "Dipole-Dipole" || arrayType === "Wenner-Schlumberger";
   }
   function tierLabelShort(tierVal){
     return arrayNeedsMultiplier(state.arrayType) ? `n=${Math.round(tierVal)}` : `a=${tierVal}m`;
@@ -1438,8 +1443,36 @@ const ERTInv = (function(){
     return rows;
   }
 
+  function simulateWennerSchlumbergerRows(){
+    const rows = [];
+    const fixedA = 2.0;
+    [1, 2, 3, 4, 5, 6, 7, 8].forEach(n => {
+      const spread = fixedA * (2 * n + 1);
+      const start = spread / 2, end = 100 - spread / 2;
+      for (let mid = start; mid <= end + 1e-9; mid += 4.0){
+        // smooth conductive body centred at 50 m: its apparent-resistivity signature widens and fades with n
+        const w = (mid - 50.0) / (8.0 + 2.5 * n);
+        const trueRho = 150.0 - (110.0 / (1.0 + 0.12 * n)) * Math.exp(-w * w);
+        const k = Math.PI * fixedA * n * (n + 1);
+        const R = (trueRho / k) + gaussianNoise(0, (trueRho / k) * 0.02);
+        const { lat, lon } = geodeticOffset(SIM_BASE_LAT, SIM_BASE_LON, SIM_LINE_AZIMUTH, mid);
+        rows.push({
+          id: Date.now() + Math.random(),
+          Midpoint_m: mid, Spacing_a_m: fixedA, Multiplier_n: n,
+          Resistance_Ohm: R, Apparent_Resistivity_Ohm_m: k * R,
+          chargeability: simulateChargeability(mid >= 40.0 && mid <= 60.0, n),
+          chargeability_unit: "mV/V", delay_time_ms: null, integration_time_ms: null,
+          Latitude_deg: lat, Longitude_deg: lon
+        });
+      }
+    });
+    return rows;
+  }
+
   function generateClassroomSimulation(arrayType){
-    return arrayType === "Wenner" ? simulateWennerRows() : simulateDipoleDipoleRows();
+    if (arrayType === "Wenner") return simulateWennerRows();
+    if (arrayType === "Wenner-Schlumberger") return simulateWennerSchlumbergerRows();
+    return simulateDipoleDipoleRows();
   }
 
   function simulationPreviewCount(arrayType){
@@ -1449,6 +1482,15 @@ const ERTInv = (function(){
         const start = 2*a, end = 100-2*a;
         let c = 0;
         for (let mid = start; mid <= end + 1e-9; mid += 10.0) c++;
+        if (c > 0){ total += c; tiers++; }
+      });
+    } else if (arrayType === "Wenner-Schlumberger"){
+      const fixedA = 2;
+      [1,2,3,4,5,6,7,8].forEach(n => {
+        const spread = fixedA*(2*n+1);
+        const start = spread/2, end = 100-spread/2;
+        let c = 0;
+        for (let mid = start; mid <= end + 1e-9; mid += 4.0) c++;
         if (c > 0){ total += c; tiers++; }
       });
     } else if (arrayType === "Dipole-Dipole"){
@@ -1466,7 +1508,7 @@ const ERTInv = (function(){
 
   function refreshSimCount(){
     if (!arraySupportsSimulation(state.arrayType)){
-      el("simCount").textContent = `Classroom simulation currently supports Wenner and Dipole-Dipole only.`;
+      el("simCount").textContent = `Classroom simulation supports Wenner, Wenner-Schlumberger and Dipole-Dipole.`;
       return;
     }
     const { total, tiers } = simulationPreviewCount(state.arrayType);
@@ -1486,7 +1528,7 @@ const ERTInv = (function(){
 
   el("btnGenSim").addEventListener("click", () => {
     if (!arraySupportsSimulation(state.arrayType)){
-      setStatus("addStatus", `Classroom simulation currently supports Wenner and Dipole-Dipole only — switch array type to generate a demo dataset.`, "err");
+      setStatus("addStatus", `Classroom simulation supports Wenner, Wenner-Schlumberger and Dipole-Dipole — switch array type to generate a demo dataset.`, "err");
       return;
     }
     if (state.rows.length && !confirm("This replaces all currently logged readings with a synthetic dataset. Continue?")) return;
@@ -1548,6 +1590,7 @@ const ERTInv = (function(){
     const labels = {
       "Wenner":        { a: "Electrode Spacing a (m)", n: "", hint: "K = 2πa" },
       "Schlumberger":  { a: "MN Spacing a (m)", n: "AB/2 Multiplier n (AB/2 = n·a)", hint: "K = πa(n² − ¼) — a is the MN potential-electrode spacing, n is how many multiples of a the current electrodes' half-spacing (AB/2) is." },
+      "Wenner-Schlumberger": { a: "MN Spacing a (m)", n: "Separation Factor n (C1–P1 = n·a)", hint: "K = πa·n(n+1) — a is the MN potential-electrode spacing and n is how many multiples of a separate each current electrode from the nearest potential electrode. n = 1 is the Wenner array." },
       "Dipole-Dipole": { a: "Dipole Length a (m)", n: "Separation Factor n", hint: "K = πa·n(n+1)(n+2)" },
       "Pole-Dipole":   { a: "Dipole Length a (m)", n: "Separation Factor n", hint: "K = 2πa·n(n+1) — one current electrode is placed effectively at infinity." },
       "Pole-Pole":     { a: "AM Spacing a (m)", n: "", hint: "K = 2πa — both the second current and second potential electrodes are placed effectively at infinity." }
@@ -2084,6 +2127,8 @@ const ERTInv = (function(){
         return `<b>AM Spacing (a):</b> ${fmt(row.Spacing_a_m,1)}m<br>`;
       case "Schlumberger":
         return `<b>MN Spacing (a):</b> ${fmt(row.Spacing_a_m,1)}m<br><b>AB/2 Multiplier (n):</b> ${n}<br>`;
+      case "Wenner-Schlumberger":
+        return `<b>MN Spacing (a):</b> ${fmt(row.Spacing_a_m,1)}m<br><b>Separation Factor (n):</b> ${n}<br>`;
       case "Pole-Dipole":
         return `<b>Dipole Spacing (a):</b> ${fmt(row.Spacing_a_m,1)}m<br><b>Separation Factor (n):</b> ${n}<br>`;
       case "Dipole-Dipole":
@@ -2101,6 +2146,8 @@ const ERTInv = (function(){
         return `AM Spacing 'a': ${fmt(row.Spacing_a_m,1)} meters`;
       case "Schlumberger":
         return `MN Spacing 'a': ${fmt(row.Spacing_a_m,1)} meters\nAB/2 Multiplier 'n': ${n}`;
+      case "Wenner-Schlumberger":
+        return `MN Spacing 'a': ${fmt(row.Spacing_a_m,1)} meters\nSeparation Factor 'n': ${n}`;
       case "Pole-Dipole":
         return `Dipole Spacing 'a': ${fmt(row.Spacing_a_m,1)} meters\nSeparation Factor 'n': ${n}`;
       case "Dipole-Dipole":
@@ -2225,7 +2272,7 @@ const ERTInv = (function(){
       try{
         const data = JSON.parse(evt.target.result);
         if (!Array.isArray(data.rows)) throw new Error("Invalid session file.");
-        const validTypes = ["Wenner","Schlumberger","Dipole-Dipole","Pole-Dipole","Pole-Pole"];
+        const validTypes = ["Wenner","Schlumberger","Wenner-Schlumberger","Dipole-Dipole","Pole-Dipole","Pole-Pole"];
         const validSurveyTypes = ["Resistivity Only","Resistivity + IP"];
         const validChargeUnits = ["mV/V","mrad"];
         state.projectName = data.projectName || "Untitled Project";
@@ -2309,17 +2356,24 @@ const ERTInv = (function(){
 
   function padRight(str, width){ return str.length >= width ? str : str + " ".repeat(width - str.length); }
 
-  // RES2DINV general array-type codes (from the RES2DINV manual):
-  //   1 Wenner Alpha · 2 Pole-Pole · 3 Dipole-Dipole · 4 Wenner-Schlumberger · 5 Pole-Dipole
+  // RES2DINV array-type codes (RES2DINV manual, data-file format):
+  //   1 Wenner · 2 Pole-Pole · 3 Dipole-Dipole · 6 Pole-Dipole · 7 Wenner-Schlumberger
+  // The app's classic "Schlumberger" option is the same physical array as code 7;
+  // it is written with n' = n - 1/2 so that RES2DINV's K = pi*a*n'(n'+1) equals pi*a*(n^2 - 1/4).
   function res2dinvArrayCode(arrayType){
     switch (arrayType){
-      case "Wenner":        return 1;
-      case "Pole-Pole":     return 2;
-      case "Dipole-Dipole": return 3;
-      case "Schlumberger":  return 4; // RES2DINV labels this "Wenner-Schlumberger"
-      case "Pole-Dipole":   return 5;
-      default:              return 1;
+      case "Wenner":              return 1;
+      case "Pole-Pole":           return 2;
+      case "Dipole-Dipole":       return 3;
+      case "Pole-Dipole":         return 6;
+      case "Wenner-Schlumberger": return 7;
+      case "Schlumberger":        return 7;
+      default:                    return 1;
     }
+  }
+  function res2dinvN(arrayType, n){
+    const nn = Math.round(n || 1);
+    return arrayType === "Schlumberger" ? String(nn - 0.5) : String(nn);
   }
 
   function buildRes2dinv(){
@@ -2360,7 +2414,7 @@ const ERTInv = (function(){
       const aspacing = padRight(row.Spacing_a_m.toFixed(2), 6);
       const apprho = padRight(row.Apparent_Resistivity_Ohm_m.toFixed(2), 10);
       let line = arrayNeedsMultiplier(state.arrayType)
-        ? ` ${xmid} ${aspacing} ${padRight(String(Math.round(row.Multiplier_n || 1)), 4)} ${apprho}`
+        ? ` ${xmid} ${aspacing} ${padRight(res2dinvN(state.arrayType, row.Multiplier_n), 4)} ${apprho}`
         : ` ${xmid} ${aspacing} ${apprho}`;
       if (hasIP){
         const chargeVal = row.chargeability === null || row.chargeability === undefined || isNaN(row.chargeability)
@@ -2429,6 +2483,10 @@ const ERTInv = (function(){
         return { A: mid - 1.5 * a, B: mid + 1.5 * a, M: mid - 0.5 * a, N: mid + 0.5 * a };
       case "Schlumberger": {
         const L = nn * a; // AB/2
+        return { A: mid - L, B: mid + L, M: mid - a / 2, N: mid + a / 2 };
+      }
+      case "Wenner-Schlumberger": {
+        const L = nn * a + a / 2; // AB/2: C1-P1 = n·a, P1-P2 = a
         return { A: mid - L, B: mid + L, M: mid - a / 2, N: mid + a / 2 };
       }
       case "Dipole-Dipole": {
@@ -2965,7 +3023,7 @@ const ERTInv = (function(){
     for (const r of state.rows){
       if (r.QualityFlag === 0) continue;                        // reviewer-rejected stations are excluded
       const e = electrodePositions(state.arrayType, r.Midpoint_m, r.Spacing_a_m, r.Multiplier_n);
-      if ([e.A, e.B, e.M, e.N].some(v => v === null || v === undefined || !isFinite(v))) return { error: `Inversion currently supports Wenner, Schlumberger and Dipole-Dipole arrays (${state.arrayType} uses electrodes at infinity).` };
+      if ([e.A, e.B, e.M, e.N].some(v => v === null || v === undefined || !isFinite(v))) return { error: `Inversion currently supports Wenner, Schlumberger, Wenner-Schlumberger and Dipole-Dipole arrays (${state.arrayType} uses electrodes at infinity).` };
       const K = geometricFactor(state.arrayType, r.Spacing_a_m, r.Multiplier_n);
       const rhoa = r.Apparent_Resistivity_Ohm_m;
       if (!(rhoa > 0) || !isFinite(K) || K <= 0) continue;

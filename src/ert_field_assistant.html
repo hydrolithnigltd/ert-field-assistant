@@ -258,6 +258,7 @@
   .btn-pair{ display:flex; gap:8px; }
   .btn-pair .btn{ flex:1; }
 
+  .spacing-readout{ font-family: var(--mono); font-size:11.5px; line-height:1.6; margin:8px 0 12px; padding:8px 10px; border:1px solid var(--border, #c9b99a); border-left:3px solid var(--accent, #b5651d); border-radius:4px; background: rgba(127,127,127,.08); }
   .status-line{ font-family: var(--mono); font-size:10.5px; color: var(--text-dim); min-height:14px; margin-top:8px; }
   .status-line.err{ color: var(--danger); }
   .status-line.ok{ color: var(--teal); }
@@ -643,6 +644,7 @@
         </div>
         <div class="hint" id="multiplierCarryHint" style="display:none;">⚠ This value carries over between stations — remember to update it yourself when you move to a new sounding level. (Mis-entered rows can be fixed with the ✎ Edit button in the Station Log below.)</div>
         <div class="hint" id="geomHint"></div>
+        <div class="spacing-readout" id="spacingReadout" style="display:none;"></div>
         <label>Measured Resistance (Ω)</label>
         <input type="number" inputmode="decimal" step="any" id="inResistance">
 
@@ -1600,6 +1602,7 @@ const ERTInv = (function(){
     el("lblMultiplierN").textContent = cfg.n;
     el("geomHint").textContent = cfg.hint;
     el("lblChargeability").textContent = `Apparent Chargeability M (${state.chargeabilityUnit})`;
+    updateSpacingReadout();
   }
 
   function refreshSetupLock(){
@@ -1699,7 +1702,33 @@ const ERTInv = (function(){
     });
   });
 
+  function updateSpacingReadout(){
+    const box = el("spacingReadout");
+    const a = parseFloat(el("inSpacing").value);
+    const n = parseFloat(el("inMultiplier").value);
+    const t = state.arrayType;
+    const needN = arrayNeedsMultiplier(t);
+    const f = v => (Math.round(v * 100) / 100).toString();
+    if (isNaN(a) || a <= 0 || (needN && (isNaN(n) || n <= 0))){
+      box.style.display = "block";
+      box.textContent = needN ? "Electrode spacing: enter a and n to see it" : "Electrode spacing: enter a to see it";
+      return;
+    }
+    let lines;
+    switch (t){
+      case "Wenner": lines = [`a = ${f(a)} m (all electrodes)`, `AB = 3a = ${f(3*a)} m`]; break;
+      case "Schlumberger": lines = [`MN = a = ${f(a)} m`, `AB/2 = n·a = ${f(n*a)} m`, `AB = ${f(2*n*a)} m`]; break;
+      case "Wenner-Schlumberger": lines = [`MN = a = ${f(a)} m`, `C1–P1 = C2–P2 = n·a = ${f(n*a)} m`, `AB = (2n+1)·a = ${f((2*n+1)*a)} m`]; break;
+      case "Dipole-Dipole": lines = [`Dipole length a = ${f(a)} m`, `C2–P1 = n·a = ${f(n*a)} m`, `Total span = (n+2)·a = ${f((n+2)*a)} m`]; break;
+      case "Pole-Dipole": lines = [`Dipole length a = ${f(a)} m`, `C1–P1 = n·a = ${f(n*a)} m`, `Span C1–P2 = (n+1)·a = ${f((n+1)*a)} m`]; break;
+      default: lines = [`AM = a = ${f(a)} m`];
+    }
+    box.style.display = "block";
+    box.innerHTML = '<b>Current electrode spacing</b><br>' + lines.join('<br>');
+  }
+
   function updateLivePreview(){
+    updateSpacingReadout();
     const a = parseFloat(el("inSpacing").value);
     const R = parseFloat(el("inResistance").value);
     const n = parseFloat(el("inMultiplier").value);

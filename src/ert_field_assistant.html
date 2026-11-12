@@ -636,9 +636,10 @@
 
         <div class="field-row">
           <div><label>Station Midpoint (m)</label><input type="number" inputmode="decimal" step="any" id="inMidpoint"></div>
-          <div><label id="lblSpacingA">Spacing a (m)</label><input type="number" inputmode="decimal" step="any" id="inSpacing"></div>
+          <div id="spacingACell"><label id="lblSpacingA">Spacing a (m)</label><input type="number" inputmode="decimal" step="any" id="inSpacing"></div>
         </div>
         <div class="field-row" id="multiplierRow" style="display:none;">
+          <div id="c1p1Cell" style="display:none;"><label>C1–P1 = P2–C2 (m)</label><input type="number" inputmode="decimal" step="any" id="inC1P1"></div>
           <div><label id="lblMultiplierN">Separation Factor n</label><input type="number" inputmode="decimal" step="1" min="1" id="inMultiplier"></div>
           <div></div>
         </div>
@@ -1592,7 +1593,7 @@ const ERTInv = (function(){
     const labels = {
       "Wenner":        { a: "Electrode Spacing a (m)", n: "", hint: "K = 2πa" },
       "Schlumberger":  { a: "MN Spacing a (m)", n: "AB/2 Multiplier n (AB/2 = n·a)", hint: "K = πa(n² − ¼) — a is the MN potential-electrode spacing, n is how many multiples of a the current electrodes' half-spacing (AB/2) is." },
-      "Wenner-Schlumberger": { a: "MN Spacing a (m)", n: "Separation Factor n (C1–P1 = n·a)", hint: "K = πa·n(n+1) — a is the MN potential-electrode spacing and n is how many multiples of a separate each current electrode from the nearest potential electrode. n = 1 is the Wenner array." },
+      "Wenner-Schlumberger": { a: "MN Spacing a (m)", n: "Separation Factor n", hint: "K = πa·n(n+1) — a is the MN potential-electrode spacing and n is how many multiples of a separate each current electrode from the nearest potential electrode. n = 1 is the Wenner array." },
       "Dipole-Dipole": { a: "Dipole Length a (m)", n: "Separation Factor n", hint: "K = πa·n(n+1)(n+2)" },
       "Pole-Dipole":   { a: "Dipole Length a (m)", n: "Separation Factor n", hint: "K = 2πa·n(n+1) — one current electrode is placed effectively at infinity." },
       "Pole-Pole":     { a: "AM Spacing a (m)", n: "", hint: "K = 2πa — both the second current and second potential electrodes are placed effectively at infinity." }
@@ -1602,6 +1603,14 @@ const ERTInv = (function(){
     el("lblMultiplierN").textContent = cfg.n;
     el("geomHint").textContent = cfg.hint;
     el("lblChargeability").textContent = `Apparent Chargeability M (${state.chargeabilityUnit})`;
+    const ws = state.arrayType === "Wenner-Schlumberger";
+    el("spacingACell").style.display = ws ? "none" : "";
+    el("c1p1Cell").style.display = ws ? "" : "none";
+    if (ws){
+      const a = parseFloat(el("inSpacing").value), n = parseFloat(el("inMultiplier").value);
+      if (el("inC1P1").value === "" && a > 0 && n > 0) el("inC1P1").value = String(Math.round(a * n * 1e6) / 1e6);
+      syncWsSpacing();
+    }
     updateSpacingReadout();
   }
 
@@ -1702,6 +1711,16 @@ const ERTInv = (function(){
     });
   });
 
+  function syncWsSpacing(){
+    if (state.arrayType !== "Wenner-Schlumberger") return;
+    const c = parseFloat(el("inC1P1").value), n = parseFloat(el("inMultiplier").value);
+    el("inSpacing").value = (c > 0 && n > 0) ? String(Math.round(c / n * 1e6) / 1e6) : "";
+  }
+  ["inC1P1","inMultiplier"].forEach(id => el(id).addEventListener("input", () => {
+    if (state.arrayType !== "Wenner-Schlumberger") return;
+    syncWsSpacing(); updateLivePreview(); updateAddButtonState();
+  }));
+
   function updateSpacingReadout(){
     const box = el("spacingReadout");
     const a = parseFloat(el("inSpacing").value);
@@ -1718,7 +1737,7 @@ const ERTInv = (function(){
     switch (t){
       case "Wenner": lines = [`a = ${f(a)} m (all electrodes)`, `AB = 3a = ${f(3*a)} m`]; break;
       case "Schlumberger": lines = [`MN = a = ${f(a)} m`, `AB/2 = n·a = ${f(n*a)} m`, `AB = ${f(2*n*a)} m`]; break;
-      case "Wenner-Schlumberger": lines = [`MN = a = ${f(a)} m`, `C1–P1 = C2–P2 = n·a = ${f(n*a)} m`, `AB = (2n+1)·a = ${f((2*n+1)*a)} m`]; break;
+      case "Wenner-Schlumberger": lines = [`C1–P1 = P2–C2 = ${f(n*a)} m`, `n = ${f(n)}`, `MN = a = C1–P1 / n = ${f(a)} m`, `AB = (2n+1)·a = ${f((2*n+1)*a)} m`]; break;
       case "Dipole-Dipole": lines = [`Dipole length a = ${f(a)} m`, `C2–P1 = n·a = ${f(n*a)} m`, `Total span = (n+2)·a = ${f((n+2)*a)} m`]; break;
       case "Pole-Dipole": lines = [`Dipole length a = ${f(a)} m`, `C1–P1 = n·a = ${f(n*a)} m`, `Span C1–P2 = (n+1)·a = ${f((n+1)*a)} m`]; break;
       default: lines = [`AM = a = ${f(a)} m`];

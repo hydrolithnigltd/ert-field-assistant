@@ -667,7 +667,8 @@
           <span><span class="val" id="lcdRho">—</span><span class="unit">Ω·m</span></span>
         </div>
 
-        <div class="btn-row" style="margin-top:12px;">
+        <div class="status-line" id="addMissing" style="margin-top:12px;"></div>
+        <div class="btn-row" style="margin-top:6px;">
           <button class="btn primary" id="btnAdd" disabled>＋ Add Station to Log</button>
         </div>
         <div class="status-line" id="addStatus"></div>
@@ -1762,7 +1763,7 @@ const ERTInv = (function(){
   }
 
   function updateAddButtonState(){
-    if (el("simMode").checked){ el("btnAdd").disabled = true; el("btnMobileSubmit").disabled = true; return; }
+    if (el("simMode").checked){ el("btnAdd").disabled = true; el("btnMobileSubmit").disabled = true; el("addMissing").textContent = "Classroom simulation mode is on — logging is disabled."; return; }
     const a = parseFloat(el("inSpacing").value);
     const R = parseFloat(el("inResistance").value);
     const n = parseFloat(el("inMultiplier").value);
@@ -1776,6 +1777,17 @@ const ERTInv = (function(){
     const ready = midpointOk && spacingOk && resistanceOk && multiplierOk && chargeabilityOk && coordsOk;
     el("btnAdd").disabled = !ready;
     el("btnMobileSubmit").disabled = !ready;
+    const miss = [];
+    if (!midpointOk) miss.push("station midpoint");
+    if (!spacingOk) miss.push(state.arrayType === "Wenner-Schlumberger" ? "MN spacing a" : "spacing a");
+    if (!multiplierOk) miss.push(state.arrayType === "Wenner-Schlumberger" ? "separation factor n (or AB)" : "separation factor n");
+    if (!resistanceOk) miss.push("measured resistance");
+    if (!chargeabilityOk) miss.push("chargeability");
+    if (!coordsOk){
+      const mode = el("posMode").value;
+      miss.push(mode === "live" ? "GPS fix (tap Capture GPS Fix, or switch Position Mode)" : mode === "manual" ? "latitude/longitude" : mode === "base" ? "base station lat/lon/azimuth" : "line definition (two points)");
+    }
+    el("addMissing").textContent = miss.length ? "Still needed: " + miss.join(", ") + "." : "";
   }
 
   // Shared submit path for the sidebar "Add Station" button, the persistent mobile

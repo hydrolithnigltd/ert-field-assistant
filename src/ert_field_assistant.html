@@ -683,8 +683,8 @@
         </div>
         <div class="log-wrap">
           <table class="log" id="logTable">
-            <thead><tr><th>Sta.</th><th>a</th><th>n</th><th class="ab-col">AB</th><th>R Ω</th><th>ρₐ</th><th class="m-col">M</th><th>QC</th><th>Lat</th><th>Lon</th><th></th></tr></thead>
-            <tbody><tr class="empty-row"><td colspan="11">No readings logged yet</td></tr></tbody>
+            <thead><tr><th>Sta.</th><th>Midpoint (m)</th><th>a</th><th>n</th><th class="ab-col">AB</th><th>R Ω</th><th>ρₐ</th><th class="m-col">M</th><th>QC</th><th>Lat</th><th>Lon</th><th></th></tr></thead>
+            <tbody><tr class="empty-row"><td colspan="12">No readings logged yet</td></tr></tbody>
           </table>
         </div>
         <div class="btn-row" style="margin-top:8px;">
@@ -1969,7 +1969,7 @@ const ERTInv = (function(){
     const ipOn = state.surveyType === "Resistivity + IP";
     const needsN = arrayNeedsMultiplier(state.arrayType);
 
-    state.rows.forEach(row => {
+    state.rows.forEach((row, rowIdx) => {
       const tr = document.createElement("tr");
       const quality = row.QualityFlag === undefined || row.QualityFlag === null ? 1 : row.QualityFlag;
       const qcCell = quality === 1
@@ -1989,6 +1989,7 @@ const ERTInv = (function(){
           ? `<input type="number" inputmode="decimal" step="any" class="edit-input" data-field="chargeability" value="${row.chargeability ?? ""}">`
           : "—";
         tr.innerHTML = `
+          <td>${rowIdx + 1}</td>
           <td><input type="number" inputmode="decimal" step="any" class="edit-input" data-field="Midpoint_m" value="${row.Midpoint_m}"></td>
           <td><input type="number" inputmode="decimal" step="any" class="edit-input" data-field="Spacing_a_m" value="${row.Spacing_a_m}"></td>
           <td>${nCell}</td>
@@ -2019,6 +2020,7 @@ const ERTInv = (function(){
         ? `<span title="${delayTitle} · ${integrationTitle}">${fmt(row.chargeability,2)} ${esc(row.chargeability_unit || "")}</span>`
         : "—";
       tr.innerHTML = `
+        <td>${rowIdx + 1}</td>
         <td>${fmt(row.Midpoint_m,1)}</td>
         <td>${fmt(row.Spacing_a_m,1)}</td>
         <td>${row.Multiplier_n !== null && row.Multiplier_n !== undefined ? Math.round(row.Multiplier_n) : "—"}</td>

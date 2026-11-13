@@ -639,7 +639,7 @@
           <div id="spacingACell"><label id="lblSpacingA">Spacing a (m)</label><input type="number" inputmode="decimal" step="any" id="inSpacing"></div>
         </div>
         <div class="field-row" id="multiplierRow" style="display:none;">
-          <div id="c1p1Cell" style="display:none;"><label>C1–P1 = P2–C2 (m)</label><input type="number" inputmode="decimal" step="any" id="inC1P1"></div>
+          <div id="c1p1Cell" style="display:none;"><label>Current Spacing AB (m)</label><input type="number" inputmode="decimal" step="any" id="inC1P1"></div>
           <div><label id="lblMultiplierN">Separation Factor n</label><input type="number" inputmode="decimal" step="1" min="1" id="inMultiplier"></div>
           <div></div>
         </div>
@@ -1604,13 +1604,8 @@ const ERTInv = (function(){
     el("geomHint").textContent = cfg.hint;
     el("lblChargeability").textContent = `Apparent Chargeability M (${state.chargeabilityUnit})`;
     const ws = state.arrayType === "Wenner-Schlumberger";
-    el("spacingACell").style.display = ws ? "none" : "";
     el("c1p1Cell").style.display = ws ? "" : "none";
-    if (ws){
-      const a = parseFloat(el("inSpacing").value), n = parseFloat(el("inMultiplier").value);
-      if (el("inC1P1").value === "" && a > 0 && n > 0) el("inC1P1").value = String(Math.round(a * n * 1e6) / 1e6);
-      syncWsSpacing();
-    }
+    if (ws) syncWs("init");
     updateSpacingReadout();
   }
 
@@ -1711,14 +1706,21 @@ const ERTInv = (function(){
     });
   });
 
-  function syncWsSpacing(){
+  const r6 = v => String(Math.round(v * 1e6) / 1e6);
+  function syncWs(src){
     if (state.arrayType !== "Wenner-Schlumberger") return;
-    const c = parseFloat(el("inC1P1").value), n = parseFloat(el("inMultiplier").value);
-    el("inSpacing").value = (c > 0 && n > 0) ? String(Math.round(c / n * 1e6) / 1e6) : "";
+    const a = parseFloat(el("inSpacing").value), n = parseFloat(el("inMultiplier").value), ab = parseFloat(el("inC1P1").value);
+    if (src === "ab"){
+      if (a > 0 && ab > 0) el("inMultiplier").value = r6((ab / a - 1) / 2);
+    } else if (a > 0 && n > 0){
+      el("inC1P1").value = r6((2 * n + 1) * a);
+    } else if (src === "a" || src === "n"){
+      el("inC1P1").value = "";
+    }
   }
-  ["inC1P1","inMultiplier"].forEach(id => el(id).addEventListener("input", () => {
+  [["inSpacing","a"],["inMultiplier","n"],["inC1P1","ab"]].forEach(([id, src]) => el(id).addEventListener("input", () => {
     if (state.arrayType !== "Wenner-Schlumberger") return;
-    syncWsSpacing(); updateLivePreview(); updateAddButtonState();
+    syncWs(src); updateLivePreview(); updateAddButtonState();
   }));
 
   function updateSpacingReadout(){
@@ -1737,7 +1739,7 @@ const ERTInv = (function(){
     switch (t){
       case "Wenner": lines = [`a = ${f(a)} m (all electrodes)`, `AB = 3a = ${f(3*a)} m`]; break;
       case "Schlumberger": lines = [`MN = a = ${f(a)} m`, `AB/2 = n·a = ${f(n*a)} m`, `AB = ${f(2*n*a)} m`]; break;
-      case "Wenner-Schlumberger": lines = [`C1–P1 = P2–C2 = ${f(n*a)} m`, `n = ${f(n)}`, `MN = a = C1–P1 / n = ${f(a)} m`, `AB = (2n+1)·a = ${f((2*n+1)*a)} m`]; break;
+      case "Wenner-Schlumberger": lines = [`MN = a = ${f(a)} m`, `AB = (2n+1)·a = ${f((2*n+1)*a)} m`, `C1–P1 = P2–C2 = n·a = ${f(n*a)} m`].concat(Number.isInteger(n) ? [] : ['⚠ n is not a whole number — check AB and MN']); break;
       case "Dipole-Dipole": lines = [`Dipole length a = ${f(a)} m`, `C2–P1 = n·a = ${f(n*a)} m`, `Total span = (n+2)·a = ${f((n+2)*a)} m`]; break;
       case "Pole-Dipole": lines = [`Dipole length a = ${f(a)} m`, `C1–P1 = n·a = ${f(n*a)} m`, `Span C1–P2 = (n+1)·a = ${f((n+1)*a)} m`]; break;
       default: lines = [`AM = a = ${f(a)} m`];

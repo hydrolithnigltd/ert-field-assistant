@@ -368,6 +368,7 @@
   table.log .edit-input:focus{ outline:none; border-color: var(--amber); }
   table.log .edit-rho-preview{ color: var(--text-dim); font-style:italic; }
   table.log.ip-hidden .m-col{ display:none; }
+  table.log.ab-hidden .ab-col{ display:none; }
   table.log input.coord-input{
     width:76px;
     background:transparent;
@@ -682,8 +683,8 @@
         </div>
         <div class="log-wrap">
           <table class="log" id="logTable">
-            <thead><tr><th>Sta.</th><th>a</th><th>n</th><th>R Ω</th><th>ρₐ</th><th class="m-col">M</th><th>QC</th><th>Lat</th><th>Lon</th><th></th></tr></thead>
-            <tbody><tr class="empty-row"><td colspan="10">No readings logged yet</td></tr></tbody>
+            <thead><tr><th>Sta.</th><th>a</th><th>n</th><th class="ab-col">AB</th><th>R Ω</th><th>ρₐ</th><th class="m-col">M</th><th>QC</th><th>Lat</th><th>Lon</th><th></th></tr></thead>
+            <tbody><tr class="empty-row"><td colspan="11">No readings logged yet</td></tr></tbody>
           </table>
         </div>
         <div class="btn-row" style="margin-top:8px;">
@@ -1606,6 +1607,7 @@ const ERTInv = (function(){
     el("lblChargeability").textContent = `Apparent Chargeability M (${state.chargeabilityUnit})`;
     const ws = state.arrayType === "Wenner-Schlumberger";
     el("c1p1Cell").style.display = ws ? "" : "none";
+    updateLogTableIPVisibility();
     if (ws) syncWs("init");
     updateSpacingReadout();
   }
@@ -1945,6 +1947,12 @@ const ERTInv = (function(){
   // ================= 04 Station log =================
   function updateLogTableIPVisibility(){
     el("logTable").classList.toggle("ip-hidden", state.surveyType !== "Resistivity + IP");
+    el("logTable").classList.toggle("ab-hidden", state.arrayType !== "Wenner-Schlumberger");
+  }
+
+  function abCell(row){
+    const a = row.Spacing_a_m, n = row.Multiplier_n;
+    return (a > 0 && n > 0) ? fmt((2 * Math.round(n) + 1) * a, 1) : "—";
   }
 
   function renderLog(){
@@ -1984,6 +1992,7 @@ const ERTInv = (function(){
           <td><input type="number" inputmode="decimal" step="any" class="edit-input" data-field="Midpoint_m" value="${row.Midpoint_m}"></td>
           <td><input type="number" inputmode="decimal" step="any" class="edit-input" data-field="Spacing_a_m" value="${row.Spacing_a_m}"></td>
           <td>${nCell}</td>
+          <td class="ab-col">${abCell(row)}</td>
           <td><input type="number" inputmode="decimal" step="any" class="edit-input" data-field="Resistance_Ohm" value="${row.Resistance_Ohm}"></td>
           <td><span class="edit-rho-preview">${fmt(row.Apparent_Resistivity_Ohm_m,2)}</span></td>
           <td class="m-col">${mCellEdit}</td>
@@ -2013,6 +2022,7 @@ const ERTInv = (function(){
         <td>${fmt(row.Midpoint_m,1)}</td>
         <td>${fmt(row.Spacing_a_m,1)}</td>
         <td>${row.Multiplier_n !== null && row.Multiplier_n !== undefined ? Math.round(row.Multiplier_n) : "—"}</td>
+        <td class="ab-col">${abCell(row)}</td>
         <td>${fmt(row.Resistance_Ohm,3)}</td>
         <td>${fmt(row.Apparent_Resistivity_Ohm_m,2)}</td>
         <td class="m-col">${mCell}</td>
